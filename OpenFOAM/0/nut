@@ -1,0 +1,49 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+|                                                                             |
+|    HiSA: High Speed Aerodynamic solver                                      |
+|    Copyright (C) 2014-2017 Johan Heyns - CSIR, South Africa                 |
+|    Copyright (C) 2014-2017 Oliver Oxtoby - CSIR, South Africa               |
+|                                                                             |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    location    "0";
+    object      nut;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 2 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    wing
+    {
+        type            nutUSpaldingWallFunction;   // 30 < y+ < 150 
+        value           uniform 0;
+    }
+
+    "(farfield)"
+    {
+        type            calculated;
+        value           $internalField;
+    }
+
+    "(symm)"
+    {
+        type            symmetry;
+        value           uniform 0;
+    }
+
+    "(intPatch)"
+    {
+        type            zeroGradient;
+    }
+}
+
+
+// ************************************************************************* //

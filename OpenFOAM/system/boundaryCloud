@@ -1,0 +1,43 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Version:  v2206
+    \\  /    A nd           | Website:  www.openfoam.com
+     \\/     M anipulation  |
+-------------------------------------------------------------------------------
+Description
+    Writes out values of fields at a cloud of points, interpolated to
+    specified boundary patches.
+
+\*---------------------------------------------------------------------------*/
+
+fields (p);
+
+maxDistance 2;
+
+patches     (wing);
+
+type            sets;
+libs            ("libsampling.so");
+
+interpolationScheme cellPoint;
+setFormat   raw;
+
+executeControl  writeTime;
+writeControl    writeTime;
+
+#include "include/Lower_Surface"
+
+sets
+(
+    surface
+    {
+        type        patchCloud;
+        axis        xyz;
+        points      $pts;
+        maxDistance $maxDistance;
+        patches     $patches;
+    }
+);
+
+// ************************************************************************* //

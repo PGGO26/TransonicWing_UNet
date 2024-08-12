@@ -1,0 +1,11 @@
+#!/bin/sh
+cd ${0%/*} || exit 1    # Run from this directory
+
+# Clean time directories only
+
+rm -rf [1-9]*
+rm -rf processor[0-9]*
+rm -rf *.msh
+rm -rf postProcessing
+
+#------------------------------------------------------------------------------
