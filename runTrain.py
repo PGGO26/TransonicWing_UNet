@@ -2,11 +2,12 @@ import logging
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from utils import NPZDataset, Normalize, ToTensor
 from UNet import UNet
+
+
 
 # Configure logging
 logging.basicConfig(filename='log/runTrain.log', 
@@ -31,10 +32,14 @@ val_dataloader = DataLoader(val_dataset, batch_size=4, shuffle=False)
 num_additional_inputs = 2
 
 # Initialize model, loss function, and optimizer
-model = UNet(in_channels=2, out_channels=2, num_additional_inputs=num_additional_inputs)
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-scheduler = StepLR(optimizer, step_size=20, gamma=0.9)
+model = UNet(in_channels=1, out_channels=1, num_additional_inputs =num_additional_inputs)
+# model.apply(weights_init)
+# if len(doLoad)>0:
+#     model.load_state_dict(torch.load(doLoad))
+#     print("Loaded model "+doLoad)
 criterion = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
 
 # Training loop
 num_epochs = 100
@@ -45,8 +50,8 @@ for epoch in range(num_epochs):
     running_loss = 0.0
     
     for batch in train_dataloader:
-        inputs = batch['inputs']
-        targets = batch['targets']
+        inputs = batch['Upper_Z']
+        targets = batch['Upper_p']
         mach = batch['Mach'].unsqueeze(1)
         aoa = batch['AOA'].unsqueeze(1)
 
@@ -68,8 +73,8 @@ for epoch in range(num_epochs):
     val_loss = 0.0
     with torch.no_grad():
         for batch in val_dataloader:
-            inputs = batch['inputs']
-            targets = batch['targets']
+            inputs = batch['Upper_Z']
+            targets = batch['Upper_p']
             mach = batch['Mach'].unsqueeze(1)
             aoa = batch['AOA'].unsqueeze(1)
 
@@ -78,9 +83,6 @@ for epoch in range(num_epochs):
             val_loss += loss.item()
     
     logging.info(f"Epoch {epoch+1}/{num_epochs}, Validation Loss: {val_loss/len(val_dataloader)}")
-
-    # Step the scheduler
-    scheduler.step()
 
 # Save the model
 torch.save(model.state_dict(), 'UNet.pth')

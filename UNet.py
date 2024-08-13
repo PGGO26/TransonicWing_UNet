@@ -71,10 +71,3 @@ class UNet(nn.Module):
         dec1 = self.dec1(dec1)
         
         return self.final_conv(dec1)
-
-# 创建模型实例
-in_channels = 2  # 因为我们有两张输入图片
-out_channels = 2  # 因为我们有两张输出图片
-num_additional_inputs = 2  # Mach 和 AOA
-
-model = UNet(in_channels=in_channels, out_channels=out_channels, num_additional_inputs=num_additional_inputs)
