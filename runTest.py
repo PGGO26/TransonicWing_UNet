@@ -6,7 +6,7 @@ from torchvision import transforms
 import torch.nn as nn
 import logging
 import matplotlib.pyplot as plt
-from utils import NPZDataset, ToTensor, Normalize
+from utils import NPZDataset, ToTensor, Normalize, Denormalize
 from UNet import UNet
 
 # Configure logging
@@ -27,6 +27,7 @@ model = UNet(in_channels=1, out_channels=1, num_additional_inputs=num_additional
 model.load_state_dict(torch.load('UNet.pth'))
 model.eval()  # Set the model to evaluation mode
 
+
 with torch.no_grad():
     for i, batch in enumerate(test_dataloader):
         inputs = batch['Upper_Z']
@@ -36,11 +37,20 @@ with torch.no_grad():
         fileName = batch['baseName'][0]
         baseName = fileName.split(".npz")[0]
         
+        # Normalize factor
+        mean_upper_p = batch['mean_upper_p']
+        std_upper_p = batch['std_upper_p']
+        mean_lower_p = batch['mean_lower_p']
+        std_lower_p = batch['std_lower_p']
+        
         # Forward pass
         outputs = model(inputs, mach, aoa)
         
-        # Process and save prediction
-        output_image = outputs.squeeze().cpu().numpy()
+        # Denormalize predictions
+        
+        denormalize = Denormalize(mean_upper_p, std_upper_p, mean_lower_p, std_lower_p)
+        denorm_outputs = denormalize({'Upper_p': outputs})
+        output_image = denorm_outputs['Upper_p'].squeeze().cpu().numpy()
         output_image = np.flipud(output_image.transpose())
         
         plt.figure(figsize=(8,6))

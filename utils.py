@@ -66,11 +66,17 @@ class Normalize:
     def __call__(self, sample):
         upper_z, upper_p, lower_z, lower_P = sample['Upper_Z'], sample['Upper_p'], sample['Lower_Z'], sample['Lower_P']
         
+        # Compute normalization statistics
+        self.mean_upper_p = torch.mean(upper_p).item()
+        self.std_upper_p = torch.std(upper_p).item()
+        self.mean_lower_p = torch.mean(lower_P).item()
+        self.std_lower_p = torch.std(lower_P).item()
+        
         # Normalize input tensors
         norm_upper_z = (upper_z - torch.mean(upper_z)) / torch.std(upper_z)
-        norm_upper_p = (upper_p - torch.mean(upper_p)) / torch.std(upper_p)
+        norm_upper_p = (upper_p - self.mean_upper_p) / self.std_upper_p
         norm_lower_z = (lower_z - torch.mean(lower_z)) / torch.std(lower_z)
-        norm_lower_P = (lower_P - torch.mean(lower_P)) / torch.std(lower_P)
+        norm_lower_P = (lower_P - self.mean_lower_p) / self.std_lower_p
 
         return {
             'Upper_Z': norm_upper_z,
@@ -79,5 +85,34 @@ class Normalize:
             'Lower_P': norm_lower_P,
             'Mach': sample['Mach'],
             'AOA': sample['AOA'],
-            'baseName' : sample['baseName']
+            'baseName' : sample['baseName'],
+            'mean_upper_p' : self.mean_upper_p,
+            'mean_lower_p' : self.mean_lower_p,
+            'std_upper_p' : self.std_upper_p,
+            'std_lower_p' : self.std_lower_p
+        }
+
+class Denormalize:
+    def __init__(self, mean_upper_p, std_upper_p, mean_lower_p, std_lower_p):
+        self.mean_upper_p = mean_upper_p
+        self.std_upper_p = std_upper_p
+        self.mean_lower_p = mean_lower_p
+        self.std_lower_p = std_lower_p
+
+    def __call__(self, sample):
+        # upper_z, upper_p, lower_z, lower_P = sample['Upper_Z'], sample['Upper_p'], sample['Lower_Z'], sample['Lower_P']
+        upper_p = sample['Upper_p']
+        
+        # Denormalize tensors
+        denorm_upper_p = upper_p * self.std_upper_p + self.mean_upper_p
+        # denorm_lower_P = lower_P * self.std_lower_p + self.mean_lower_p
+
+        return {
+            # 'Upper_Z': upper_z,
+            'Upper_p': denorm_upper_p,
+            # 'Lower_Z': lower_z,
+            # 'Lower_P': denorm_lower_P,
+            # 'Mach': sample['Mach'],
+            # 'AOA': sample['AOA'],
+            # 'baseName': sample['baseName']
         }
