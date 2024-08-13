@@ -1,118 +1,86 @@
 import os
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 from torchvision import transforms
+import torch.nn as nn
+import logging
+import matplotlib.pyplot as plt
+from utils import NPZDataset, ToTensor, Normalize, Denormalize
+from UNet import UNet
 
-class NPZDataset(Dataset):
-    def __init__(self, folder_path, transform=None):
-        self.folder_path = folder_path
-        self.npz_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.npz')]
-        self.transform = transform
+# Configure logging
+logging.basicConfig(filename='log/runTest.log', 
+                    level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s', 
+                    filemode='w')
 
-    def __len__(self):
-        return len(self.npz_files)
+# Load test data
+test_data_dir = "data/test/"
+transform = transforms.Compose([ToTensor(), Normalize()])
+test_dataset = NPZDataset(test_data_dir, transform=transform)
+test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    def __getitem__(self, idx):
-        npz_file = self.npz_files[idx]
-        npz_data = np.load(npz_file)
-        upper_z = npz_data['Upper_Z']
-        upper_p = npz_data['Upper_P']
-        lower_z = npz_data['Lower_Z']
-        lower_P = npz_data['Lower_P']
+# Load the trained model
+num_additional_inputs = 2
+model = UNet(in_channels=2, out_channels=2, num_additional_inputs=num_additional_inputs)
+model.load_state_dict(torch.load('UNet.pth'))
+model.eval()  # Set the model to evaluation mode
 
-        # Extract Mach and AOA from the filename
-        filename = os.path.basename(npz_file)
-        parts = filename.split('_')
-        mach = float(parts[-2])
-        aoa = float(parts[-1].replace('.npz', ''))
-
-        sample = {
-            'Upper_Z': upper_z,
-            'Upper_p': upper_p,
-            'Lower_Z': lower_z,
-            'Lower_P': lower_P,
-            'Mach': mach,
-            'AOA': aoa,
-            'baseName' : filename
-        }
-
-        if self.transform:
-            sample = self.transform(sample)
-
-        return sample
-
-class ToTensor:
-    def __call__(self, sample):
-        upper_z, upper_p, lower_z, lower_P = sample['Upper_Z'], sample['Upper_p'], sample['Lower_Z'], sample['Lower_P']
-        mach, aoa = sample['Mach'], sample['AOA']
-        fileName = sample['baseName']
+with torch.no_grad():
+    for i, batch in enumerate(test_dataloader):
+        upper_z = batch['Upper_Z']
+        lower_z = batch['Lower_Z']
+        inputs = torch.cat((upper_z, lower_z), dim=1)  # Combine "Upper_Z" and "Lower_Z" as inputs
+        upper_p = batch['Upper_p']
+        lower_p = batch['Lower_P']
+        targets = torch.cat((upper_p, lower_p), dim=1)  # Combine "Upper_P" and "Lower_P" as targets
+        mach = batch['Mach'].unsqueeze(1)
+        aoa = batch['AOA'].unsqueeze(1)
+        fileName = batch['baseName'][0]
+        baseName = fileName.split(".npz")[0]
         
-        # Convert additional variables to tensor
-        mach_tensor = torch.tensor(mach, dtype=torch.float32)
-        aoa_tensor = torch.tensor(aoa, dtype=torch.float32)
+        # Load normalization factors
+        mean_upper_p = batch['mean_upper_p']
+        std_upper_p = batch['std_upper_p']
+        mean_lower_p = batch['mean_lower_p']
+        std_lower_p = batch['std_lower_p']
         
-        return {
-            'Upper_Z': torch.tensor(upper_z, dtype=torch.float32).unsqueeze(0),
-            'Upper_p': torch.tensor(upper_p, dtype=torch.float32).unsqueeze(0),
-            'Lower_Z': torch.tensor(lower_z, dtype=torch.float32).unsqueeze(0),
-            'Lower_P': torch.tensor(lower_P, dtype=torch.float32).unsqueeze(0),
-            'Mach': mach_tensor,
-            'AOA': aoa_tensor,
-            'baseName' : fileName
-        }
-
-class Normalize:
-    def __call__(self, sample):
-        upper_z, upper_p, lower_z, lower_P = sample['Upper_Z'], sample['Upper_p'], sample['Lower_Z'], sample['Lower_P']
+        # Forward pass
+        outputs = model(inputs, mach, aoa)
         
-        # Compute normalization statistics
-        self.mean_upper_p = torch.mean(upper_p).item()
-        self.std_upper_p = torch.std(upper_p).item()
-        self.mean_lower_p = torch.mean(lower_P).item()
-        self.std_lower_p = torch.std(lower_P).item()
+        # Split outputs back into Upper_P and Lower_P
+        upper_p_output = outputs[:, 0, :, :].unsqueeze(1)
+        lower_p_output = outputs[:, 1, :, :].unsqueeze(1)
+
+        # Denormalize predictions
+        denormalize = Denormalize(mean_upper_p, std_upper_p, mean_lower_p, std_lower_p)
+        denorm_outputs = denormalize({'Upper_p': upper_p_output, 'Lower_P': lower_p_output})
         
-        # Normalize input tensors
-        norm_upper_z = (upper_z - torch.mean(upper_z)) / torch.std(upper_z)
-        norm_upper_p = (upper_p - self.mean_upper_p) / self.std_upper_p
-        norm_lower_z = (lower_z - torch.mean(lower_z)) / torch.std(lower_z)
-        norm_lower_P = (lower_P - self.mean_lower_p) / self.std_lower_p
-
-        return {
-            'Upper_Z': norm_upper_z,
-            'Upper_p': norm_upper_p,
-            'Lower_Z': norm_lower_z,
-            'Lower_P': norm_lower_P,
-            'Mach': sample['Mach'],
-            'AOA': sample['AOA'],
-            'baseName' : sample['baseName'],
-            'mean_upper_p' : self.mean_upper_p,
-            'mean_lower_p' : self.mean_lower_p,
-            'std_upper_p' : self.std_upper_p,
-            'std_lower_p' : self.std_lower_p
-        }
-
-class Denormalize:
-    def __init__(self, mean_upper_p, std_upper_p, mean_lower_p, std_lower_p):
-        self.mean_upper_p = mean_upper_p
-        self.std_upper_p = std_upper_p
-        self.mean_lower_p = mean_lower_p
-        self.std_lower_p = std_lower_p
-
-    def __call__(self, sample):
-        # upper_z, upper_p, lower_z, lower_P = sample['Upper_Z'], sample['Upper_p'], sample['Lower_Z'], sample['Lower_P']
-        upper_p = sample['Upper_p']
+        # Process Upper_P output for visualization
+        upper_p_image = denorm_outputs['Upper_p'].squeeze().cpu().numpy()
+        upper_p_image = np.flipud(upper_p_image.transpose())
         
-        # Denormalize tensors
-        denorm_upper_p = upper_p * self.std_upper_p + self.mean_upper_p
-        # denorm_lower_P = lower_P * self.std_lower_p + self.mean_lower_p
+        plt.figure(figsize=(8,6))
+        plt.imshow(upper_p_image, cmap='jet', interpolation='nearest')
+        plt.colorbar(label='Pressure')
+        plt.title(f"Upper_P Prediction for Sample: {baseName}")
+        plt.xlabel('X pixel')
+        plt.ylabel('Y pixel')
+        plt.savefig(f"plots/upper_p_prediction_{baseName}.png")
+        plt.close()
 
-        return {
-            # 'Upper_Z': upper_z,
-            'Upper_p': denorm_upper_p,
-            # 'Lower_Z': lower_z,
-            # 'Lower_P': denorm_lower_P,
-            # 'Mach': sample['Mach'],
-            # 'AOA': sample['AOA'],
-            # 'baseName': sample['baseName']
-        }
+        # Process Lower_P output for visualization
+        lower_p_image = denorm_outputs['Lower_P'].squeeze().cpu().numpy()
+        lower_p_image = np.flipud(lower_p_image.transpose())
+        
+        plt.figure(figsize=(8,6))
+        plt.imshow(lower_p_image, cmap='jet', interpolation='nearest')
+        plt.colorbar(label='Pressure')
+        plt.title(f"Lower_P Prediction for Sample: {baseName}")
+        plt.xlabel('X pixel')
+        plt.ylabel('Y pixel')
+        plt.savefig(f"plots/lower_p_prediction_{baseName}.png")
+        plt.close()
+
+        logging.info(f"Prediction images for sample {baseName} saved.")
