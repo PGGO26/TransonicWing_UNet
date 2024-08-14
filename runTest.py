@@ -58,7 +58,7 @@ with torch.no_grad():
         denorm_outputs = denormalize({'Upper_P': upper_p_output, 'Lower_P': lower_p_output})
         
         # Process Upper_P output for visualization
-        upper_p_image = denorm_outputs['Upper_P'].squeeze().cpu().numpy()
+        upper_p_image = upper_p_output.squeeze().cpu().numpy()
         upper_p_image = np.flipud(upper_p_image.transpose())
         
         plt.figure(figsize=(8,6))
@@ -71,7 +71,7 @@ with torch.no_grad():
         plt.close()
 
         # Process Lower_P output for visualization
-        lower_p_image = denorm_outputs['Lower_P'].squeeze().cpu().numpy()
+        lower_p_image = lower_p_output.squeeze().cpu().numpy()
         lower_p_image = np.flipud(lower_p_image.transpose())
         
         plt.figure(figsize=(8,6))
@@ -83,4 +83,43 @@ with torch.no_grad():
         plt.savefig(f"plots/lower_p_prediction_{baseName}.png")
         plt.close()
 
-        logging.info(f"Prediction images for sample {baseName} saved.")
+        # Calculate and visualize error for Upper_P
+        upper_p_target = upper_p.squeeze().cpu().numpy()
+        upper_p_target = np.flipud(upper_p_target.transpose())
+        upper_p_error = np.square(upper_p_image - upper_p_target)
+        print(f"Upper_P error : {np.mean(upper_p_error)}\nUpper_P Max error : {np.max(upper_p_error)}")
+        
+        plt.figure(figsize=(8,6))
+        plt.imshow(upper_p_target, cmap='jet', interpolation='nearest')
+        plt.colorbar(label='Pressure')
+        plt.title(f"Upper_P ground truth for Sample : {baseName}")
+        plt.xlabel("X pixel")
+        plt.ylabel("Y pixel")
+        plt.savefig(f"plots/upper_p_groundTruth_{baseName}.png")
+        plt.close()
+
+        plt.figure(figsize=(8,6))
+        plt.imshow(upper_p_error, cmap='jet', interpolation='nearest')
+        plt.colorbar(label='Prediction Error')
+        plt.title(f"Upper_P Error for Sample: {baseName}")
+        plt.xlabel('X pixel')
+        plt.ylabel('Y pixel')
+        plt.savefig(f"plots/upper_p_error_{baseName}.png")
+        plt.close()
+
+        # Calculate and visualize error for Lower_P
+        lower_p_target = lower_p.squeeze().cpu().numpy()
+        lower_p_target = np.flipud(lower_p_target.transpose())
+        lower_p_error = np.square(lower_p_image - lower_p_target)
+        print(f"Lower_P error : {np.mean(lower_p_error)}\nLower_P Max error : {np.max(lower_p_error)}")
+        
+        plt.figure(figsize=(8,6))
+        plt.imshow(lower_p_error, cmap='jet', interpolation='nearest')
+        plt.colorbar(label='Prediction Error')
+        plt.title(f"Lower_P Error for Sample: {baseName}")
+        plt.xlabel('X pixel')
+        plt.ylabel('Y pixel')
+        plt.savefig(f"plots/lower_p_error_{baseName}.png")
+        plt.close()
+
+        logging.info(f"Prediction and error images for sample {baseName} saved.")

@@ -4,7 +4,7 @@ import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from utils import NPZDataset, Normalize, ToTensor
+from utils import NPZDataset, Normalize, ToTensor, GeometricTransformations, ApplyFilters
 from UNet import UNet
 from torch.optim.lr_scheduler import StepLR  # 导入调度器模块
 
@@ -17,7 +17,7 @@ logging.basicConfig(filename='log/runTrain.log',
 # Load training data
 train_data_dir = "data/train/"
 logging.info("Loading training data.")
-transform = transforms.Compose([ToTensor(), Normalize()])
+transform = transforms.Compose([GeometricTransformations() ,ApplyFilters(), ToTensor(), Normalize()])
 train_dataset = NPZDataset(train_data_dir, transform=transform)
 train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True)
 
@@ -33,13 +33,13 @@ num_additional_inputs = 2
 # Initialize model, loss function, and optimizer
 model = UNet(in_channels=2, out_channels=2, num_additional_inputs=num_additional_inputs)
 criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
 # Initialize learning rate scheduler
-scheduler = StepLR(optimizer, step_size=10, gamma=0.7)  # 每10个epoch降低学习率为原来的0.7倍
+scheduler = StepLR(optimizer, step_size=10, gamma=0.9)  # 每10个epoch降低学习率为原来的0.7倍
 
 # Training loop
-num_epochs = 20
+num_epochs = 100
 logging.info("Start training.")
 
 for epoch in range(num_epochs):
@@ -50,7 +50,7 @@ for epoch in range(num_epochs):
         upper_z = batch['Upper_Z']
         lower_z = batch['Lower_Z']
         inputs = torch.cat((upper_z, lower_z), dim=1)  # Combine "Upper_Z" and "Lower_Z" as inputs
-        upper_p = batch['Upper_p']
+        upper_p = batch['Upper_P']
         lower_p = batch['Lower_P']
         targets = torch.cat((upper_p, lower_p), dim=1)  # Combine "Upper_P" and "Lower_P" as targets
         mach = batch['Mach'].unsqueeze(1)
@@ -77,7 +77,7 @@ for epoch in range(num_epochs):
             upper_z = batch['Upper_Z']
             lower_z = batch['Lower_Z']
             inputs = torch.cat((upper_z, lower_z), dim=1)
-            upper_p = batch['Upper_p']
+            upper_p = batch['Upper_P']
             lower_p = batch['Lower_P']
             targets = torch.cat((upper_p, lower_p), dim=1)
             mach = batch['Mach'].unsqueeze(1)
