@@ -5,8 +5,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from utils import NPZDataset, Normalize, ToTensor, GeometricTransformations, ApplyFilters
-from UNet import UNet
-from torch.optim.lr_scheduler import StepLR  # 导入调度器模块
+from torch.optim.lr_scheduler import StepLR
+from networks.UNet import UNet
 
 # Configure logging
 logging.basicConfig(filename='log/runTrain.log', 

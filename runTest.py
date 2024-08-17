@@ -7,7 +7,7 @@ import torch.nn as nn
 import logging
 import matplotlib.pyplot as plt
 from utils import NPZDataset, ToTensor, Normalize, Denormalize
-from UNet import UNet
+from networks.UNet import UNet
 
 # Configure logging
 logging.basicConfig(filename='log/runTest.log', 
