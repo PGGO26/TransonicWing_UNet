@@ -1,125 +1,117 @@
-import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
-import torch.nn as nn
-import logging
 import matplotlib.pyplot as plt
 from utils import NPZDataset, ToTensor, Normalize, Denormalize
 from networks.UNet import UNet
 
-# Configure logging
-logging.basicConfig(filename='log/runTest.log', 
-                    level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s', 
-                    filemode='w')
+def load_test_data(test_data_dir):
+    transform = transforms.Compose([ToTensor(), Normalize()])
+    test_dataset = NPZDataset(test_data_dir, transform=transform)
+    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    return test_dataloader
 
-# Load test data
-test_data_dir = "data/test/"
-transform = transforms.Compose([ToTensor(), Normalize()])
-test_dataset = NPZDataset(test_data_dir, transform=transform)
-test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+def load_model(model_path, num_additional_inputs=2):
+    model = UNet(in_channels=2, out_channels=2, num_additional_inputs=num_additional_inputs)
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    return model
 
-# Load the trained model
-num_additional_inputs = 2
-model = UNet(in_channels=2, out_channels=2, num_additional_inputs=num_additional_inputs)
-model.load_state_dict(torch.load('UNet.pth'))
-model.eval()  # Set the model to evaluation mode
+def denormalize_outputs(mean_upper_p, std_upper_p, mean_lower_p, std_lower_p, upper_p_output, lower_p_output, upper_p, lower_p):
+    denormalize = Denormalize(mean_upper_p, std_upper_p, mean_lower_p, std_lower_p)
+    denorm_outputs = denormalize({'Upper_P': upper_p_output, 'Lower_P': lower_p_output})
+    denorm_targets = denormalize({'Upper_P': upper_p, 'Lower_P': lower_p})
+    return denorm_outputs, denorm_targets
 
-with torch.no_grad():
-    for i, batch in enumerate(test_dataloader):
-        upper_z = batch['Upper_Z']
-        lower_z = batch['Lower_Z']
-        inputs = torch.cat((upper_z, lower_z), dim=1)  # Combine "Upper_Z" and "Lower_Z" as inputs
-        upper_p = batch['Upper_P']
-        lower_p = batch['Lower_P']
-        targets = torch.cat((upper_p, lower_p), dim=1)  # Combine "Upper_P" and "Lower_P" as targets
-        mach = batch['Mach'].unsqueeze(1)
-        aoa = batch['AOA'].unsqueeze(1)
-        fileName = batch['baseName'][0]
-        baseName = fileName.split(".npz")[0]
-        
-        # Load normalization factors
-        mean_upper_p = batch['mean_upper_p']
-        std_upper_p = batch['std_upper_p']
-        mean_lower_p = batch['mean_lower_p']
-        std_lower_p = batch['std_lower_p']
-        
-        # Forward pass
-        outputs = model(inputs, mach, aoa)
-        
-        # Split outputs back into Upper_P and Lower_P
-        upper_p_output = outputs[:, 0, :, :].unsqueeze(1)
-        lower_p_output = outputs[:, 1, :, :].unsqueeze(1)
+def calculate_and_visualize_error(predict, target, baseName, region, cmap='Greys'):
+    error = np.abs(predict - target)
+    error_image = np.flipud(error.transpose())
+    plt.figure(figsize=(8, 6))
+    plt.imshow(error_image, cmap=cmap, interpolation='nearest')
+    plt.colorbar(label='Prediction Error')
+    plt.title(f"{region} Error for Sample: {baseName}")
+    plt.xlabel('X pixel')
+    plt.ylabel('Y pixel')
+    plt.savefig(f"plots/{region.lower()}_error_{baseName}.png")
+    plt.close()
+    print(f"{region} error : {np.mean(error)}\n{region} Max error : {np.max(error)}")
+    return error_image
 
-        # Denormalize predictions
-        denormalize = Denormalize(mean_upper_p, std_upper_p, mean_lower_p, std_lower_p)
-        denorm_outputs = denormalize({'Upper_P': upper_p_output, 'Lower_P': lower_p_output})
-        
-        # Process Upper_P output for visualization
-        upper_p_image = upper_p_output.squeeze().cpu().numpy()
-        upper_p_image = np.flipud(upper_p_image.transpose())
-        
-        plt.figure(figsize=(8,6))
-        plt.imshow(upper_p_image, cmap='jet', interpolation='nearest')
-        plt.colorbar(label='Pressure')
-        plt.title(f"Upper_P Prediction for Sample: {baseName}")
-        plt.xlabel('X pixel')
-        plt.ylabel('Y pixel')
-        plt.savefig(f"plots/upper_p_prediction_{baseName}.png")
-        plt.close()
+def visualize_prediction(predict, baseName, region, cmap='jet'):
+    predict_image = np.flipud(predict.transpose())
+    plt.figure(figsize=(8, 6))
+    plt.imshow(predict_image, cmap=cmap, interpolation='nearest')
+    plt.colorbar(label='Pressure')
+    plt.title(f"{region} Prediction for Sample: {baseName}")
+    plt.xlabel('X pixel')
+    plt.ylabel('Y pixel')
+    plt.savefig(f'plots/{region.lower()}_prediction_{baseName}.png')
+    plt.close()
 
-        # Process Lower_P output for visualization
-        lower_p_image = lower_p_output.squeeze().cpu().numpy()
-        lower_p_image = np.flipud(lower_p_image.transpose())
-        
-        plt.figure(figsize=(8,6))
-        plt.imshow(lower_p_image, cmap='jet', interpolation='nearest')
-        plt.colorbar(label='Pressure')
-        plt.title(f"Lower_P Prediction for Sample: {baseName}")
-        plt.xlabel('X pixel')
-        plt.ylabel('Y pixel')
-        plt.savefig(f"plots/lower_p_prediction_{baseName}.png")
-        plt.close()
+def visualize_ground_truth(target, baseName, region, cmap='jet'):
+    target_image = np.flipud(target.transpose())
+    plt.figure(figsize=(8, 6))
+    plt.imshow(target_image, cmap=cmap, interpolation='nearest')
+    plt.colorbar(label='Pressure')
+    plt.title(f"{region} Ground Truth for Sample: {baseName}")
+    plt.xlabel('X pixel')
+    plt.ylabel('Y pixel')
+    plt.savefig(f'plots/{region.lower()}_ground_{baseName}.png')
+    plt.close()
 
-        # Calculate and visualize error for Upper_P
-        upper_p_target = upper_p.squeeze().cpu().numpy()
-        upper_p_target = np.flipud(upper_p_target.transpose())
-        upper_p_error = np.square(upper_p_image - upper_p_target)
-        print(f"Upper_P error : {np.mean(upper_p_error)}\nUpper_P Max error : {np.max(upper_p_error)}")
-        
-        plt.figure(figsize=(8,6))
-        plt.imshow(upper_p_target, cmap='jet', interpolation='nearest')
-        plt.colorbar(label='Pressure')
-        plt.title(f"Upper_P ground truth for Sample : {baseName}")
-        plt.xlabel("X pixel")
-        plt.ylabel("Y pixel")
-        plt.savefig(f"plots/upper_p_groundTruth_{baseName}.png")
-        plt.close()
+def main():
+    test_data_dir = "data/test/"
+    model_path = 'models/UNet.pth'
 
-        plt.figure(figsize=(8,6))
-        plt.imshow(upper_p_error, cmap='jet', interpolation='nearest')
-        plt.colorbar(label='Prediction Error')
-        plt.title(f"Upper_P Error for Sample: {baseName}")
-        plt.xlabel('X pixel')
-        plt.ylabel('Y pixel')
-        plt.savefig(f"plots/upper_p_error_{baseName}.png")
-        plt.close()
+    # Load test data and model
+    test_dataloader = load_test_data(test_data_dir)
+    model = load_model(model_path)
 
-        # Calculate and visualize error for Lower_P
-        lower_p_target = lower_p.squeeze().cpu().numpy()
-        lower_p_target = np.flipud(lower_p_target.transpose())
-        lower_p_error = np.square(lower_p_image - lower_p_target)
-        print(f"Lower_P error : {np.mean(lower_p_error)}\nLower_P Max error : {np.max(lower_p_error)}")
-        
-        plt.figure(figsize=(8,6))
-        plt.imshow(lower_p_error, cmap='jet', interpolation='nearest')
-        plt.colorbar(label='Prediction Error')
-        plt.title(f"Lower_P Error for Sample: {baseName}")
-        plt.xlabel('X pixel')
-        plt.ylabel('Y pixel')
-        plt.savefig(f"plots/lower_p_error_{baseName}.png")
-        plt.close()
+    with torch.no_grad():
+        for i, batch in enumerate(test_dataloader):
+            upper_z = batch['Upper_Z']
+            lower_z = batch['Lower_Z']
+            inputs = torch.cat((upper_z, lower_z), dim=1)
+            upper_p = batch['Upper_P']
+            lower_p = batch['Lower_P']
+            mach = batch['Mach'].unsqueeze(1)
+            aoa = batch['AOA'].unsqueeze(1)
+            fileName = batch['baseName'][0]
+            baseName = fileName.split(".npz")[0]
 
-        logging.info(f"Prediction and error images for sample {baseName} saved.")
+            # Load normalization factors
+            mean_upper_p = batch['mean_upper_p']
+            std_upper_p = batch['std_upper_p']
+            mean_lower_p = batch['mean_lower_p']
+            std_lower_p = batch['std_lower_p']
+
+            # Forward pass
+            outputs = model(inputs, mach, aoa)
+            upper_p_output = outputs[:, 0, :, :].unsqueeze(1)
+            lower_p_output = outputs[:, 1, :, :].unsqueeze(1)
+
+            # Denormalize outputs and targets
+            denorm_outputs, denorm_targets = denormalize_outputs(
+                mean_upper_p, std_upper_p, mean_lower_p, std_lower_p,
+                upper_p_output, lower_p_output, upper_p, lower_p
+            )
+
+            # Calculate errors and generate plots for Upper_P
+            upper_p_predict = denorm_outputs['Upper_P'].squeeze().cpu().numpy()
+            upper_p_target = denorm_targets['Upper_P'].squeeze().cpu().numpy()
+            calculate_and_visualize_error(upper_p_predict, upper_p_target, baseName, "Upper_P")
+            visualize_prediction(upper_p_predict, baseName, "Upper_P")
+            visualize_ground_truth(upper_p_target, baseName, "Upper_P")
+
+            # Calculate errors and generate plots for Lower_P
+            lower_p_predict = denorm_outputs['Lower_P'].squeeze().cpu().numpy()
+            lower_p_target = denorm_targets['Lower_P'].squeeze().cpu().numpy()
+            calculate_and_visualize_error(lower_p_predict, lower_p_target, baseName, "Lower_P")
+            visualize_prediction(lower_p_predict, baseName, "Lower_P")
+            visualize_ground_truth(lower_p_target, baseName, "Lower_P")
+
+            print(f"Prediction and error images for sample {baseName} saved.")
+
+if __name__ == "__main__":
+    main()
